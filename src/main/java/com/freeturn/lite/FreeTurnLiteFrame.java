@@ -23,9 +23,11 @@ import java.awt.BorderLayout;
 import java.awt.Desktop;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
+import java.awt.GraphicsEnvironment;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
+import java.awt.Rectangle;
 import java.awt.Toolkit;
 import java.awt.datatransfer.StringSelection;
 import java.awt.event.WindowAdapter;
@@ -46,21 +48,25 @@ final class FreeTurnLiteFrame extends JFrame {
     private final JTextArea shareUri = new JTextArea(2, 28);
     private final JTextField corePath = new JTextField();
     private final JTextField peer = new JTextField();
+    private final JTextField subUrl = new JTextField();
     private final JTextArea links = new JTextArea(4, 28);
     private final JTextField listen = new JTextField();
-    private final JComboBox<String> provider = new JComboBox<>(new String[]{"vk"});
-    private final JComboBox<String> browser = new JComboBox<>(new String[]{"safari", "firefox", "chrome"});
+    private final JComboBox<String> provider = new JComboBox<>(new String[]{"vk", "direct"});
+    private final JComboBox<String> platform = new JComboBox<>(new String[]{"desktop", "mobile"});
     private final JSpinner threads = new JSpinner(new SpinnerNumberModel(12, 0, 256, 1));
     private final JSpinner streamsPerCred = new JSpinner(new SpinnerNumberModel(12, 0, 256, 1));
     private final JCheckBox tcpMode = new JCheckBox("TCP mode (-mode tcp)");
     private final JCheckBox bond = new JCheckBox("Bonding (-bond)");
     private final JCheckBox udpTransport = new JCheckBox("UDP TURN transport");
+    private final JTextField kcpFlags = new JTextField();
     private final JCheckBox manualCaptcha = new JCheckBox("Manual captcha");
     private final JCheckBox debug = new JCheckBox("Debug log");
+    private final JCheckBox routes = new JCheckBox("Exclude TURN from VPN (-routes, needs admin)");
     private final JComboBox<String> dnsMode = new JComboBox<>(new String[]{"auto", "plain", "doh"});
     private final JTextField dnsServers = new JTextField();
     private final JComboBox<String> obfProfile = new JComboBox<>(new String[]{"none", "rtpopus", "rtpopus2", "rtpopus3"});
     private final JTextField obfKey = new JTextField();
+    private final JSpinner obfTiming = new JSpinner(new SpinnerNumberModel(0, 0, 60, 5));
     private final JTextField clientId = new JTextField();
     private final JCheckBox useRawArgs = new JCheckBox("Raw arguments mode");
     private final JTextArea rawArgs = new JTextArea(3, 28);
@@ -94,6 +100,12 @@ final class FreeTurnLiteFrame extends JFrame {
         }
         refreshRunningState();
         pack();
+        fitToScreen();
+    }
+
+    private void fitToScreen() {
+        Rectangle screen = GraphicsEnvironment.getLocalGraphicsEnvironment().getMaximumWindowBounds();
+        setSize(Math.min(getWidth(), screen.width), Math.min(getHeight(), screen.height));
     }
 
     private JPanel topBar() {
@@ -106,7 +118,10 @@ final class FreeTurnLiteFrame extends JFrame {
     }
 
     private JSplitPane content() {
-        JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT, formPanel(), logPanel());
+        JScrollPane form = new JScrollPane(formPanel());
+        form.setBorder(BorderFactory.createEmptyBorder());
+        form.getVerticalScrollBar().setUnitIncrement(16);
+        JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT, form, logPanel());
         split.setResizeWeight(0.58);
         split.setBorder(BorderFactory.createEmptyBorder(0, 10, 0, 10));
         return split;
@@ -128,6 +143,7 @@ final class FreeTurnLiteFrame extends JFrame {
         JPanel uriPanel = new JPanel(new BorderLayout(4, 0));
         JButton importUri = new JButton("Import");
         importUri.addActionListener(e -> importShareUri());
+        shareUri.setLineWrap(true);
         uriPanel.add(new JScrollPane(shareUri), BorderLayout.CENTER);
         uriPanel.add(importUri, BorderLayout.EAST);
         addField(panel, c, row++, uriPanel);
@@ -142,12 +158,14 @@ final class FreeTurnLiteFrame extends JFrame {
 
         addLabel(panel, c, row, "Server (-peer)");
         addField(panel, c, row++, peer);
+        addLabel(panel, c, row, "Subscription (-sub)");
+        addField(panel, c, row++, subUrl);
         addLabel(panel, c, row, "VK links (-links)");
         addField(panel, c, row++, new JScrollPane(links));
         addLabel(panel, c, row, "Listen");
         addField(panel, c, row++, listen);
 
-        addLabel(panel, c, row, "Provider / Browser");
+        addLabel(panel, c, row, "Provider / Platform");
         JPanel providerRow = new JPanel(new GridBagLayout());
         GridBagConstraints pc = new GridBagConstraints();
         pc.insets = new Insets(0, 0, 0, 6);
@@ -157,7 +175,7 @@ final class FreeTurnLiteFrame extends JFrame {
         pc.gridx = 1;
         pc.weightx = 0.65;
         pc.insets = new Insets(0, 0, 0, 0);
-        providerRow.add(browser, pc);
+        providerRow.add(platform, pc);
         addField(panel, c, row++, providerRow);
 
         addLabel(panel, c, row, "Threads / streams");
@@ -179,6 +197,9 @@ final class FreeTurnLiteFrame extends JFrame {
         modeRow.add(udpTransport);
         addField(panel, c, row++, modeRow);
 
+        addLabel(panel, c, row, "KCP flags (TCP)");
+        addField(panel, c, row++, kcpFlags);
+
         addLabel(panel, c, row, "DNS");
         JPanel dnsRow = new JPanel(new BorderLayout(6, 0));
         dnsRow.add(dnsMode, BorderLayout.WEST);
@@ -191,7 +212,10 @@ final class FreeTurnLiteFrame extends JFrame {
         generate.addActionListener(e -> obfKey.setText(generateHexKey()));
         obfRow.add(obfProfile, BorderLayout.WEST);
         obfRow.add(obfKey, BorderLayout.CENTER);
-        obfRow.add(generate, BorderLayout.EAST);
+        JPanel obfControls = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+        obfControls.add(labeled("Timing, ms", obfTiming));
+        obfControls.add(generate);
+        obfRow.add(obfControls, BorderLayout.EAST);
         addField(panel, c, row++, obfRow);
 
         addLabel(panel, c, row, "Client ID");
@@ -201,6 +225,7 @@ final class FreeTurnLiteFrame extends JFrame {
         JPanel flagRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
         flagRow.add(manualCaptcha);
         flagRow.add(debug);
+        flagRow.add(routes);
         addField(panel, c, row++, flagRow);
 
         addLabel(panel, c, row, "Raw args");
@@ -232,6 +257,7 @@ final class FreeTurnLiteFrame extends JFrame {
         log.setWrapStyleWord(true);
         JScrollPane scroll = new JScrollPane(log);
         scroll.setBorder(BorderFactory.createTitledBorder("Core log"));
+        scroll.setPreferredSize(new Dimension(0, 180));
         return scroll;
     }
 
@@ -270,6 +296,12 @@ final class FreeTurnLiteFrame extends JFrame {
         });
         openCaptcha.addActionListener(e -> openUrl(latestUrl));
         useRawArgs.addActionListener(e -> updateRawMode());
+        tcpMode.addActionListener(e -> updateRawMode());
+        provider.addActionListener(e -> {
+            // 0 оставляет число потоков ядру: для direct это 1.
+            if (isDirect()) threads.setValue(0);
+            updateRawMode();
+        });
         new Timer(500, e -> refreshRunningState()).start();
 
         addWindowListener(new WindowAdapter() {
@@ -284,8 +316,8 @@ final class FreeTurnLiteFrame extends JFrame {
                     );
                     if (choice != JOptionPane.YES_OPTION) return;
                 }
-                runner.shutdown();
                 dispose();
+                runner.shutdown();
                 System.exit(0);
             }
         });
@@ -338,7 +370,9 @@ final class FreeTurnLiteFrame extends JFrame {
             applyConfig(config);
             config.save();
             appendLog("freeturn:// imported: peer=" + config.peer + ", listen=" + config.listen);
-            if (config.links.isBlank()) appendLog("VK call link не входит в freeturn://, вставьте его в VK links.");
+            if ("vk".equals(config.provider) && config.links.isBlank()) {
+                appendLog("VK call link не входит в эту ссылку, вставьте его в VK links.");
+            }
             if (config.wireGuardConfig.isBlank()) appendLog("WireGuard config не найден в URI, его можно вставить отдельно.");
         } catch (Exception e) {
             showError("Не удалось импортировать freeturn://: " + e.getMessage());
@@ -348,21 +382,25 @@ final class FreeTurnLiteFrame extends JFrame {
     private void applyConfig(CoreConfig config) {
         corePath.setText(config.corePath);
         peer.setText(config.peer);
+        subUrl.setText(config.subUrl);
         links.setText(config.links);
         listen.setText(config.listen);
         provider.setSelectedItem(config.provider);
-        browser.setSelectedItem(config.browser);
+        platform.setSelectedItem(config.platform);
         threads.setValue(config.threads);
         streamsPerCred.setValue(config.streamsPerCred);
         tcpMode.setSelected(config.tcpMode);
         bond.setSelected(config.bond);
         udpTransport.setSelected(config.udpTransport);
+        kcpFlags.setText(config.kcpFlags);
         manualCaptcha.setSelected(config.manualCaptcha);
         debug.setSelected(config.debug);
+        routes.setSelected(config.routes);
         dnsMode.setSelectedItem(config.dnsMode);
         dnsServers.setText(config.dnsServers);
         obfProfile.setSelectedItem(config.obfProfile);
         obfKey.setText(config.obfKey);
+        obfTiming.setValue(config.obfTimingMs);
         clientId.setText(config.clientId);
         useRawArgs.setSelected(config.useRawArgs);
         rawArgs.setText(config.rawArgs);
@@ -376,21 +414,25 @@ final class FreeTurnLiteFrame extends JFrame {
         CoreConfig config = new CoreConfig();
         config.corePath = corePath.getText();
         config.peer = peer.getText();
+        config.subUrl = subUrl.getText();
         config.links = links.getText();
         config.listen = listen.getText();
         config.provider = selected(provider);
-        config.browser = selected(browser);
+        config.platform = selected(platform);
         config.threads = (Integer) threads.getValue();
         config.streamsPerCred = (Integer) streamsPerCred.getValue();
         config.tcpMode = tcpMode.isSelected();
         config.bond = bond.isSelected();
         config.udpTransport = udpTransport.isSelected();
+        config.kcpFlags = kcpFlags.getText();
         config.manualCaptcha = manualCaptcha.isSelected();
         config.debug = debug.isSelected();
+        config.routes = routes.isSelected();
         config.dnsMode = selected(dnsMode);
         config.dnsServers = dnsServers.getText();
         config.obfProfile = selected(obfProfile);
         config.obfKey = obfKey.getText();
+        config.obfTimingMs = (Integer) obfTiming.getValue();
         config.clientId = clientId.getText();
         config.useRawArgs = useRawArgs.isSelected();
         config.rawArgs = rawArgs.getText();
@@ -451,25 +493,34 @@ final class FreeTurnLiteFrame extends JFrame {
         refreshRunningState();
     }
 
+    private boolean isDirect() {
+        return "direct".equals(selected(provider));
+    }
+
     private void updateRawMode() {
         boolean raw = useRawArgs.isSelected();
+        boolean vkOptions = !raw && !isDirect();
         rawArgs.setEnabled(raw);
         peer.setEnabled(!raw);
-        links.setEnabled(!raw);
+        subUrl.setEnabled(!raw);
+        links.setEnabled(vkOptions);
         listen.setEnabled(!raw);
         provider.setEnabled(!raw);
-        browser.setEnabled(!raw);
+        platform.setEnabled(vkOptions);
         threads.setEnabled(!raw);
-        streamsPerCred.setEnabled(!raw);
+        streamsPerCred.setEnabled(vkOptions);
         tcpMode.setEnabled(!raw);
-        bond.setEnabled(!raw);
-        udpTransport.setEnabled(!raw);
-        manualCaptcha.setEnabled(!raw);
+        bond.setEnabled(!raw && tcpMode.isSelected());
+        kcpFlags.setEnabled(!raw && tcpMode.isSelected());
+        udpTransport.setEnabled(vkOptions);
+        manualCaptcha.setEnabled(vkOptions);
         debug.setEnabled(!raw);
+        routes.setEnabled(!raw);
         dnsMode.setEnabled(!raw);
         dnsServers.setEnabled(!raw);
         obfProfile.setEnabled(!raw);
         obfKey.setEnabled(!raw);
+        obfTiming.setEnabled(!raw);
         clientId.setEnabled(!raw);
     }
 
@@ -515,7 +566,8 @@ final class FreeTurnLiteFrame extends JFrame {
     }
 
     private void appendWireGuardRoutingWarning() {
-        appendLog("Важно: во внешнем VPN-клиенте исключите free-turn-proxy.exe из туннеля, иначе возможна петля маршрутизации.");
+        appendLog("Важно: исключите free-turn-proxy.exe из туннеля во внешнем VPN-клиенте или включите -routes, "
+                + "иначе возможна петля маршрутизации.");
     }
 
     private void refreshRunningState() {

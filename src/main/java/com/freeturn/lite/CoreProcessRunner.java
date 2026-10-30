@@ -4,11 +4,14 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Base64;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 final class CoreProcessRunner {
     interface Listener {
@@ -18,6 +21,27 @@ final class CoreProcessRunner {
     }
 
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("HH:mm:ss");
+    private static final int INTERRUPT_TIMEOUT_SECONDS = 15;
+    // Ядро завершается само не дольше чем за 5 секунд после сигнала.
+    private static final int SHUTDOWN_TIMEOUT_SECONDS = 7;
+    // Process.destroy() на Windows убивает процесс сразу, а ядру нужно снять маршруты и
+    // TURN-аллокации. Сигнал доходит только через консоль процесса, поэтому подключаемся к ней.
+    // Нужен именно Ctrl+Break: Ctrl+C процесс может унаследовать игнорируемым от родителя.
+    private static final String CONSOLE_INTERRUPT_SCRIPT = """
+            Add-Type -Namespace FreeTurnLite -Name Kernel -MemberDefinition '
+            private delegate bool Handler(uint ctrlType);
+            private static readonly Handler ignore = delegate { return true; };
+            [DllImport("kernel32.dll")] private static extern bool FreeConsole();
+            [DllImport("kernel32.dll")] private static extern bool AttachConsole(uint processId);
+            [DllImport("kernel32.dll")] private static extern bool SetConsoleCtrlHandler(Handler handler, bool add);
+            [DllImport("kernel32.dll")] private static extern bool GenerateConsoleCtrlEvent(uint ctrlEvent, uint group);
+            public static bool SendCtrlBreak(uint processId) {
+                FreeConsole();
+                return AttachConsole(processId) && SetConsoleCtrlHandler(ignore, true) && GenerateConsoleCtrlEvent(1, 0);
+            }
+            '
+            if (-not [FreeTurnLite.Kernel]::SendCtrlBreak(%d)) { exit 1 }
+            """;
     private final ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
         Thread thread = new Thread(r, "freeturn-core-reader");
         thread.setDaemon(true);
@@ -25,6 +49,7 @@ final class CoreProcessRunner {
     });
 
     private Process process;
+    private Process stopping;
 
     synchronized boolean isRunning() {
         return process != null && process.isAlive();
@@ -49,30 +74,58 @@ final class CoreProcessRunner {
         }
     }
 
-    synchronized void stop() {
-        if (process == null) {
+    void stop() {
+        Process running = claimForStop();
+        if (running == null) {
             return;
         }
-        process.destroy();
-        if (process.isAlive()) {
-            executor.submit(() -> {
-                try {
-                    Thread.sleep(2_000);
-                } catch (InterruptedException ignored) {
-                    Thread.currentThread().interrupt();
-                }
-                synchronized (CoreProcessRunner.this) {
-                    if (process != null && process.isAlive()) {
-                        process.destroyForcibly();
-                    }
-                }
-            });
-        }
+        Thread stopper = new Thread(() -> terminate(running), "freeturn-core-stop");
+        stopper.setDaemon(true);
+        stopper.start();
     }
 
     void shutdown() {
-        stop();
+        Process running = claimForStop();
+        if (running != null) {
+            terminate(running);
+        }
         executor.shutdownNow();
+    }
+
+    private synchronized Process claimForStop() {
+        if (process == null || process == stopping) {
+            return null;
+        }
+        stopping = process;
+        return process;
+    }
+
+    private static void terminate(Process running) {
+        try {
+            if (!sendConsoleInterrupt(running.pid()) || !running.waitFor(SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                running.destroyForcibly();
+            }
+        } catch (InterruptedException e) {
+            running.destroyForcibly();
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private static boolean sendConsoleInterrupt(long pid) throws InterruptedException {
+        byte[] script = CONSOLE_INTERRUPT_SCRIPT.formatted(pid).getBytes(StandardCharsets.UTF_16LE);
+        try {
+            Process helper = new ProcessBuilder(
+                    "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+                    "-EncodedCommand", Base64.getEncoder().encodeToString(script)
+            ).redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.DISCARD).start();
+            if (!helper.waitFor(INTERRUPT_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                helper.destroyForcibly();
+                return false;
+            }
+            return helper.exitValue() == 0;
+        } catch (IOException e) {
+            return false;
+        }
     }
 
     private void readProcess(Process started, Listener listener) {

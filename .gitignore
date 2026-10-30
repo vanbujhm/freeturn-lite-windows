@@ -3,6 +3,7 @@ build/
 
 # Downloaded FreeTurn core binaries.
 core/*.exe
+core/*.download
 core/checksums.txt
 
 # IDE/editor files.

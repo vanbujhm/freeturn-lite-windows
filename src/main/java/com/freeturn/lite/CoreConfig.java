@@ -21,18 +21,22 @@ final class CoreConfig {
     String links = "";
     String listen = "127.0.0.1:9000";
     String provider = "vk";
-    String browser = "safari";
+    String platform = "desktop";
+    String subUrl = "";
     int threads = 12;
     int streamsPerCred = 12;
     boolean tcpMode = false;
     boolean bond = false;
+    String kcpFlags = "";
     boolean udpTransport = false;
     boolean manualCaptcha = false;
     boolean debug = false;
+    boolean routes = false;
     String dnsMode = "auto";
     String dnsServers = "";
     String obfProfile = "none";
     String obfKey = "";
+    int obfTimingMs = 0;
     String clientId = "";
     boolean useRawArgs = false;
     String rawArgs = "";
@@ -41,12 +45,16 @@ final class CoreConfig {
     int wireGuardMtu = 1280;
 
     static CoreConfig load() {
+        return load(CONFIG_FILE);
+    }
+
+    static CoreConfig load(Path file) {
         CoreConfig config = new CoreConfig();
-        if (!Files.exists(CONFIG_FILE)) {
+        if (!Files.exists(file)) {
             return config;
         }
         Properties p = new Properties();
-        try (InputStream input = Files.newInputStream(CONFIG_FILE)) {
+        try (InputStream input = Files.newInputStream(file)) {
             p.load(input);
         } catch (IOException ignored) {
             return config;
@@ -57,18 +65,22 @@ final class CoreConfig {
         config.links = p.getProperty("links", config.links);
         config.listen = p.getProperty("listen", config.listen);
         config.provider = p.getProperty("provider", config.provider);
-        config.browser = p.getProperty("browser", config.browser);
+        config.platform = p.getProperty("platform", config.platform);
+        config.subUrl = p.getProperty("subUrl", config.subUrl);
         config.threads = intProperty(p, "threads", config.threads);
         config.streamsPerCred = intProperty(p, "streamsPerCred", config.streamsPerCred);
         config.tcpMode = boolProperty(p, "tcpMode", config.tcpMode);
         config.bond = boolProperty(p, "bond", config.bond);
+        config.kcpFlags = p.getProperty("kcpFlags", config.kcpFlags);
         config.udpTransport = boolProperty(p, "udpTransport", config.udpTransport);
         config.manualCaptcha = boolProperty(p, "manualCaptcha", config.manualCaptcha);
         config.debug = boolProperty(p, "debug", config.debug);
+        config.routes = boolProperty(p, "routes", config.routes);
         config.dnsMode = p.getProperty("dnsMode", config.dnsMode);
         config.dnsServers = p.getProperty("dnsServers", config.dnsServers);
         config.obfProfile = p.getProperty("obfProfile", config.obfProfile);
         config.obfKey = p.getProperty("obfKey", config.obfKey);
+        config.obfTimingMs = intProperty(p, "obfTimingMs", config.obfTimingMs);
         config.clientId = p.getProperty("clientId", config.clientId);
         config.useRawArgs = boolProperty(p, "useRawArgs", config.useRawArgs);
         config.rawArgs = p.getProperty("rawArgs", config.rawArgs);
@@ -80,31 +92,39 @@ final class CoreConfig {
 
     void save() throws IOException {
         Files.createDirectories(CONFIG_DIR);
+        save(CONFIG_FILE);
+    }
+
+    void save(Path file) throws IOException {
         Properties p = new Properties();
         p.setProperty("corePath", corePath);
         p.setProperty("peer", peer);
         p.setProperty("links", links);
         p.setProperty("listen", listen);
         p.setProperty("provider", provider);
-        p.setProperty("browser", browser);
+        p.setProperty("platform", platform);
+        p.setProperty("subUrl", subUrl);
         p.setProperty("threads", Integer.toString(threads));
         p.setProperty("streamsPerCred", Integer.toString(streamsPerCred));
         p.setProperty("tcpMode", Boolean.toString(tcpMode));
         p.setProperty("bond", Boolean.toString(bond));
+        p.setProperty("kcpFlags", kcpFlags);
         p.setProperty("udpTransport", Boolean.toString(udpTransport));
         p.setProperty("manualCaptcha", Boolean.toString(manualCaptcha));
         p.setProperty("debug", Boolean.toString(debug));
+        p.setProperty("routes", Boolean.toString(routes));
         p.setProperty("dnsMode", dnsMode);
         p.setProperty("dnsServers", dnsServers);
         p.setProperty("obfProfile", obfProfile);
         p.setProperty("obfKey", obfKey);
+        p.setProperty("obfTimingMs", Integer.toString(obfTimingMs));
         p.setProperty("clientId", clientId);
         p.setProperty("useRawArgs", Boolean.toString(useRawArgs));
         p.setProperty("rawArgs", rawArgs);
         p.setProperty("wireGuardConfig", wireGuardConfig);
         p.setProperty("wireGuardName", wireGuardName);
         p.setProperty("wireGuardMtu", Integer.toString(wireGuardMtu));
-        try (OutputStream output = Files.newOutputStream(CONFIG_FILE)) {
+        try (OutputStream output = Files.newOutputStream(file)) {
             p.store(output, "FreeTurnLite for Windows");
         }
     }
@@ -117,28 +137,35 @@ final class CoreConfig {
             return command;
         }
 
+        boolean vk = "vk".equals(provider);
+        addPair(command, "-sub", subUrl);
         addPair(command, "-peer", peer);
         addPair(command, "-provider", provider);
-        addPair(command, "-links", normalizeList(links));
+        if (vk) addPair(command, "-links", normalizeList(links));
         addPair(command, "-listen", listen);
         if (threads > 0) addPair(command, "-n", Integer.toString(threads));
-        if (streamsPerCred > 0 && streamsPerCred != 10) {
+        if (vk && streamsPerCred > 0) {
             addPair(command, "-streams-per-cred", Integer.toString(streamsPerCred));
         }
-        if (tcpMode) addPair(command, "-mode", "tcp");
-        if (tcpMode && bond) command.add("-bond");
-        if (udpTransport) addPair(command, "-transport", "udp");
+        if (tcpMode) {
+            addPair(command, "-mode", "tcp");
+            if (bond) command.add("-bond");
+            command.addAll(splitCommandLine(kcpFlags));
+        }
+        if (vk && udpTransport) addPair(command, "-transport", "udp");
         if (!"none".equals(obfProfile)) {
             addPair(command, "-obf-profile", obfProfile);
             addPair(command, "-obf-key", obfKey);
+            if (obfTimingMs > 0) addPair(command, "-obf-timing", obfTimingMs + "ms");
         }
-        if (manualCaptcha) command.add("-manual-captcha");
-        if ("vk".equals(provider) && !"firefox".equals(browser)) addPair(command, "-browser", browser);
+        if (vk && manualCaptcha) command.add("-manual-captcha");
+        if (vk && !"desktop".equals(platform)) addPair(command, "-platform", platform);
         if (debug) command.add("-debug");
         String dns = normalizeList(dnsServers);
         if (!dns.isBlank()) addPair(command, "-dns-servers", dns);
         if ("plain".equals(dnsMode) || "doh".equals(dnsMode)) addPair(command, "-dns-mode", dnsMode);
         addPair(command, "-client-id", clientId);
+        if (routes) command.add("-routes");
         return command;
     }
 
@@ -160,8 +187,11 @@ final class CoreConfig {
     String validate() {
         if (corePath.trim().isEmpty()) return "Укажите путь к free-turn-proxy.exe.";
         if (useRawArgs) return rawArgs.trim().isEmpty() ? "Raw arguments пусты." : "";
-        if (peer.trim().isEmpty()) return "Укажите сервер FreeTurn (-peer).";
-        if (normalizeList(links).isEmpty()) return "Укажите хотя бы одну ссылку звонка VK (-links).";
+        boolean subscription = !subUrl.trim().isEmpty();
+        if (!subscription && peer.trim().isEmpty()) return "Укажите сервер FreeTurn (-peer).";
+        if (!subscription && "vk".equals(provider) && normalizeList(links).isEmpty()) {
+            return "Укажите хотя бы одну ссылку звонка VK (-links).";
+        }
         if (!isHostPort(listen.trim())) return "Адрес listen должен быть в формате host:port.";
         if (!"none".equals(obfProfile) && !obfKey.matches("^[0-9a-fA-F]{64}$")) {
             return "Obfuscation key должен быть 64 hex символа.";
@@ -260,7 +290,7 @@ final class CoreConfig {
 
     private static boolean isSensitiveFlag(String part) {
         return "-links".equals(part) || "-link".equals(part) ||
-                "-obf-key".equals(part) || "-client-id".equals(part);
+                "-obf-key".equals(part) || "-client-id".equals(part) || "-sub".equals(part);
     }
 
     private static String normalizeList(String value) {

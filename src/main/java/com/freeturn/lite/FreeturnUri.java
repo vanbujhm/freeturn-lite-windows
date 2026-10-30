@@ -3,10 +3,14 @@ package com.freeturn.lite;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 final class FreeturnUri {
     private static final String SCHEME = "freeturn://";
+    private static final List<String> KCP_NUMBER_KEYS = List.of(
+            "nodelay", "interval", "resend", "nc", "sndwnd", "rcvwnd", "mtu"
+    );
 
     private FreeturnUri() {
     }
@@ -22,12 +26,17 @@ final class FreeturnUri {
         config.udpTransport = "udp".equalsIgnoreCase(values.getOrDefault("transport", ""));
         config.tcpMode = "tcp".equalsIgnoreCase(values.getOrDefault("mode", ""));
         config.bond = "true".equalsIgnoreCase(values.getOrDefault("bond", "false"));
+        config.kcpFlags = kcpFlags(values.get("kcp"));
         String obf = values.getOrDefault("obf", "");
         config.obfProfile = obf.isBlank() ? "none" : obf;
         config.obfKey = values.getOrDefault("key", "");
-        config.threads = intValue(values.get("n"), config.threads);
+        config.obfTimingMs = intValue(values.get("timing"), 0);
+        config.threads = intValue(values.get("n"), "direct".equals(config.provider) ? 0 : config.threads);
         config.streamsPerCred = intValue(values.get("spc"), config.streamsPerCred);
         config.clientId = values.getOrDefault("cid", "");
+        config.subUrl = "";
+        String callLink = values.getOrDefault("vk", "");
+        if (!callLink.isBlank()) config.links = callLink;
         String listen = values.getOrDefault("listen", "");
         if (!listen.isBlank()) config.listen = listen;
         String dnsMode = values.getOrDefault("dns", "");
@@ -85,6 +94,18 @@ final class FreeturnUri {
         return result;
     }
 
+    private static String kcpFlags(String rawKcp) {
+        if (rawKcp == null || rawKcp.isBlank()) return "";
+        Map<String, String> kcp = parseFlatJsonObject(rawKcp);
+        StringBuilder flags = new StringBuilder();
+        for (String key : KCP_NUMBER_KEYS) {
+            if (kcp.containsKey(key)) flags.append("-kcp-").append(key).append(' ').append(kcp.get(key)).append(' ');
+        }
+        // Булевый флаг Go принимает значение только через "=".
+        if (kcp.containsKey("acknodelay")) flags.append("-kcp-acknodelay=").append(kcp.get("acknodelay"));
+        return flags.toString().trim();
+    }
+
     private static int intValue(String raw, int fallback) {
         if (raw == null || raw.isBlank()) return fallback;
         try {
@@ -134,6 +155,7 @@ final class FreeturnUri {
 
         String readValueAsString() {
             if (peek('"')) return readString();
+            if (peek('{')) return readObject();
             int start = index;
             while (!isAtEnd()) {
                 char ch = source.charAt(index);
@@ -142,6 +164,21 @@ final class FreeturnUri {
             }
             require(index > start, "expected value");
             return source.substring(start, index);
+        }
+
+        private String readObject() {
+            int start = index;
+            int depth = 0;
+            while (!isAtEnd()) {
+                if (peek('"')) {
+                    readString();
+                    continue;
+                }
+                char ch = source.charAt(index++);
+                if (ch == '{') depth++;
+                if (ch == '}' && --depth == 0) return source.substring(start, index);
+            }
+            throw new IllegalArgumentException("unterminated object");
         }
 
         String readString() {
