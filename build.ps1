@@ -1,5 +1,6 @@
 param(
-    [string]$JdkHome = "C:\Program Files\Java\jdk-21"
+    [string]$JdkHome = "C:\Program Files\Java\jdk-21",
+    [string]$AppVersion = "1.0.0"
 )
 
 $ErrorActionPreference = "Stop"
@@ -30,6 +31,7 @@ $Sources = Get-ChildItem -Path (Join-Path $ProjectDir "src\main\java") -Recurse 
 & $Jpackage `
     --type app-image `
     --name FreeTurnLite `
+    --app-version $AppVersion `
     --input $LibsDir `
     --main-jar "freeturn-lite-windows.jar" `
     --main-class "com.freeturn.lite.FreeTurnLiteApp" `

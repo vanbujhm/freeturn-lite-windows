@@ -83,7 +83,7 @@ final class FreeTurnLiteFrame extends JFrame {
     private String latestUrl = "";
 
     FreeTurnLiteFrame(String initialUri) {
-        super("FreeTurnLite for Windows");
+        super("FreeTurnLite for Windows 1.0.0");
         setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
         setMinimumSize(new Dimension(1040, 760));
         setLocationByPlatform(true);
