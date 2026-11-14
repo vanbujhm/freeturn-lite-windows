@@ -32,6 +32,8 @@ final class CoreConfigTest {
         run("link with garbage after object is rejected", CoreConfigTest::linkWithTrailingGarbageIsRejected);
         run("vk command carries options", CoreConfigTest::vkCommandCarriesOptions);
         run("streams-per-cred 10 is passed", CoreConfigTest::streamsPerCredTenIsPassed);
+        run("advanced captcha is passed", CoreConfigTest::advancedCaptchaIsPassed);
+        run("manual captcha turns advanced off", CoreConfigTest::manualCaptchaTurnsAdvancedOff);
         run("direct command omits vk flags", CoreConfigTest::directCommandOmitsVkFlags);
         run("timing needs obfuscation", CoreConfigTest::timingNeedsObfuscation);
         run("kcp flags need tcp mode", CoreConfigTest::kcpFlagsNeedTcpMode);
@@ -42,6 +44,7 @@ final class CoreConfigTest {
         run("saved config restores new fields", CoreConfigTest::savedConfigRestoresNewFields);
         if (args.length > 0) {
             run("core accepts every generated flag", () -> coreAcceptsEveryFlag(args[0]));
+            run("core accepts advanced captcha", () -> coreAcceptsAdvancedCaptcha(args[0]));
             run("stop lets core finish cleanly", () -> stopLetsCoreFinishCleanly(args[0]));
         }
         if (failures > 0) {
@@ -122,15 +125,32 @@ final class CoreConfigTest {
         assertEquals("10", valueOf(config.command(), "-streams-per-cred"));
     }
 
+    private static void advancedCaptchaIsPassed() {
+        CoreConfig config = vkConfig();
+        assertTrue(!config.command().contains("-advanced-captcha"), "advanced captcha is off by default");
+        config.advancedCaptcha = true;
+        assertTrue(config.command().contains("-advanced-captcha"), "advanced captcha flag");
+    }
+
+    private static void manualCaptchaTurnsAdvancedOff() {
+        CoreConfig config = vkConfig();
+        config.advancedCaptcha = true;
+        config.manualCaptcha = true;
+        List<String> command = config.command();
+        assertTrue(command.contains("-manual-captcha"), "manual captcha flag");
+        assertTrue(!command.contains("-advanced-captcha"), "advanced captcha with manual");
+    }
+
     private static void directCommandOmitsVkFlags() {
         CoreConfig config = vkConfig();
         config.provider = "direct";
         config.platform = "mobile";
         config.manualCaptcha = true;
+        config.advancedCaptcha = true;
         config.udpTransport = true;
         List<String> command = config.command();
         assertEquals("direct", valueOf(command, "-provider"));
-        for (String flag : List.of("-links", "-streams-per-cred", "-platform", "-manual-captcha", "-transport")) {
+        for (String flag : List.of("-links", "-streams-per-cred", "-platform", "-manual-captcha", "-advanced-captcha", "-transport")) {
             assertTrue(!command.contains(flag), flag + " must be omitted");
         }
     }
@@ -188,6 +208,7 @@ final class CoreConfigTest {
             config.obfTimingMs = 25;
             config.routes = true;
             config.kcpFlags = "-kcp-mtu 1000";
+            config.advancedCaptcha = true;
             config.save(file);
 
             CoreConfig restored = CoreConfig.load(file);
@@ -196,6 +217,7 @@ final class CoreConfigTest {
             assertEquals(25, restored.obfTimingMs);
             assertTrue(restored.routes, "routes");
             assertEquals("-kcp-mtu 1000", restored.kcpFlags);
+            assertTrue(restored.advancedCaptcha, "advanced captcha");
         } finally {
             Files.deleteIfExists(file);
         }
@@ -218,7 +240,19 @@ final class CoreConfigTest {
         config.obfTimingMs = 20;
         config.clientId = "test-client";
         config.kcpFlags = "-kcp-interval 40 -kcp-acknodelay=false";
+        assertCoreParses(config);
+    }
 
+    // Ручная капча отключает продвинутую, поэтому её флаг проверяется отдельно.
+    private static void coreAcceptsAdvancedCaptcha(String corePath) throws Exception {
+        CoreConfig config = vkConfig();
+        config.corePath = corePath;
+        config.advancedCaptcha = true;
+        assertTrue(config.command().contains("-advanced-captcha"), "advanced captcha flag");
+        assertCoreParses(config);
+    }
+
+    private static void assertCoreParses(CoreConfig config) throws Exception {
         // -gen-obf-key завершает ядро сразу после разбора флагов, без сети.
         List<String> command = new ArrayList<>(config.command());
         command.add("-gen-obf-key");

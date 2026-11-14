@@ -30,6 +30,7 @@ final class CoreConfig {
     String kcpFlags = "";
     boolean udpTransport = false;
     boolean manualCaptcha = false;
+    boolean advancedCaptcha = false;
     boolean debug = false;
     boolean routes = false;
     String dnsMode = "auto";
@@ -74,6 +75,7 @@ final class CoreConfig {
         config.kcpFlags = p.getProperty("kcpFlags", config.kcpFlags);
         config.udpTransport = boolProperty(p, "udpTransport", config.udpTransport);
         config.manualCaptcha = boolProperty(p, "manualCaptcha", config.manualCaptcha);
+        config.advancedCaptcha = boolProperty(p, "advancedCaptcha", config.advancedCaptcha);
         config.debug = boolProperty(p, "debug", config.debug);
         config.routes = boolProperty(p, "routes", config.routes);
         config.dnsMode = p.getProperty("dnsMode", config.dnsMode);
@@ -111,6 +113,7 @@ final class CoreConfig {
         p.setProperty("kcpFlags", kcpFlags);
         p.setProperty("udpTransport", Boolean.toString(udpTransport));
         p.setProperty("manualCaptcha", Boolean.toString(manualCaptcha));
+        p.setProperty("advancedCaptcha", Boolean.toString(advancedCaptcha));
         p.setProperty("debug", Boolean.toString(debug));
         p.setProperty("routes", Boolean.toString(routes));
         p.setProperty("dnsMode", dnsMode);
@@ -159,6 +162,8 @@ final class CoreConfig {
             if (obfTimingMs > 0) addPair(command, "-obf-timing", obfTimingMs + "ms");
         }
         if (vk && manualCaptcha) command.add("-manual-captcha");
+        // С ручной капчей ядро не решает её автоматически, и продвинутый режим ни на что не влияет.
+        if (vk && advancedCaptcha && !manualCaptcha) command.add("-advanced-captcha");
         if (vk && !"desktop".equals(platform)) addPair(command, "-platform", platform);
         if (debug) command.add("-debug");
         String dns = normalizeList(dnsServers);

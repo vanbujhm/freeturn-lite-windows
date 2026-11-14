@@ -1,0 +1,48 @@
+diff --git a/docs/flags.md b/docs/flags.md
+index dd50f06..0aa8fd7 100644
+--- a/docs/flags.md
++++ b/docs/flags.md
+@@ -20,6 +20,7 @@
+ | `-obf-timing`       | `0`                                               | межпакетная задержка для RTP-мимикрии (напр. `20ms`); только с `-obf-profile != none`; `0` = выкл. В `-mode tcp` особенно уместна: KCP гонит бёрсты полноразмерных пакетов, без выравнивания профиль на Opus не похож                                     |
+ | `-gen-obf-key`      | `false`                                           | напечатать новый ключ и выйти                                                                                                                                                                                                                             |
+ | `-manual-captcha`   | `false`                                           | сразу ручной режим captcha (только `-provider vk`)                                                                                                                                                                                                        |
++| `-advanced-captcha` | `false`                                           | авто captcha берёт PoW из настоящего браузера (страница открывается в системном браузере); если не вышло, обычное авто. С `-manual-captcha` не действует (только `-provider vk`)                                                                          |
+ | `-streams-per-cred` | `12`                                              | потоков на один кеш учёток (только `-provider vk`)                                                                                                                                                                                                     |
+ | `-platform`         | `desktop`                                         | класс устройства персоны авторизации (мобильность UA/device/client hints): `desktop` \| `mobile` (только `-provider vk`)                                                                                                                                      |
+ | `-dns-mode`         | `auto`                                            | `plain` (UDP/53) \| `doh` \| `auto`                                                                                                                                                                                                                       |
+diff --git a/internal/config/args.go b/internal/config/args.go
+index 4ac35d7..d007cc9 100644
+--- a/internal/config/args.go
++++ b/internal/config/args.go
+@@ -36,6 +36,7 @@ func ClientArgs(c *Client) []string {
+ 	addIf(c.Obf.Enabled(), "-obf-key", hex.EncodeToString(c.Obf.Key))
+ 	addIf(c.Obf.Timing > 0, "-obf-timing", c.Obf.Timing.String())
+ 	addIf(c.VK.ManualCaptcha, "-manual-captcha")
++	addIf(c.VK.AdvancedCaptcha, "-advanced-captcha")
+ 	addIf(c.VK.Platform != def.VK.Platform, "-platform", string(c.VK.Platform))
+ 	addIf(c.DNS.Mode != def.DNS.Mode, "-dns-mode", c.DNS.Mode)
+ 	addIf(len(c.DNS.Servers) > 0, "-dns-servers", strings.Join(c.DNS.Servers, ","))
+diff --git a/internal/config/args_test.go b/internal/config/args_test.go
+index da741e1..25ad026 100644
+--- a/internal/config/args_test.go
++++ b/internal/config/args_test.go
+@@ -24,6 +24,7 @@ func TestClientArgsRoundTrip(t *testing.T) {
+ 		{"turn override", append(validClientArgs(), "-turn", "5.5.5.5", "-port", "3478")},
+ 		{"tuning", append(validClientArgs(), "-n", "3", "-streams-per-cred", "4")},
+ 		{"vk extras", append(validClientArgs(), "-manual-captcha", "-platform", "mobile")},
++		{"advanced captcha", append(validClientArgs(), "-advanced-captcha")},
+ 		{"multi links", []string{"-peer", "1.2.3.4:5000", "-links", "https://vk.ru/call/join/A,https://vk.ru/call/join/B"}},
+ 		{"misc", append(validClientArgs(), "-client-id", "deadbeef", "-listen", "127.0.0.1:1080", "-debug")},
+ 	}
+diff --git a/internal/config/cliflags.go b/internal/config/cliflags.go
+index ae95e6b..13e7d22 100644
+--- a/internal/config/cliflags.go
++++ b/internal/config/cliflags.go
+@@ -55,6 +55,7 @@ func ParseClient(args []string, errOut io.Writer) (*Client, error) {
+ 	fs.IntVar(&r.StreamsPerCred, "streams-per-cred", r.StreamsPerCred, "TURN-потоков на один кеш VK-creds; только -provider vk")
+ 	fs.BoolVar(&r.Debug, "debug", r.Debug, "подробные debug-логи")
+ 	fs.BoolVar(&r.ManualCaptcha, "manual-captcha", r.ManualCaptcha, "ручная VK captcha в браузере вместо авто; только -provider vk")
++	fs.BoolVar(&r.AdvancedCaptcha, "advanced-captcha", r.AdvancedCaptcha, "авто VK captcha с PoW из настоящего браузера, при неудаче обычное авто; только -provider vk")
+ 	fs.StringVar(&r.Platform, "platform", r.Platform, "класс устройства персоны VK-auth: desktop | mobile; только -provider vk")
+ 	fs.StringVar(&r.DNSMode, "dns-mode", r.DNSMode, "резолвер клиента: plain | doh | auto")
+ 	fs.StringVar(&r.DNSServers, "dns-servers", r.DNSServers, "свои UDP/53 DNS через запятую: ip[:port][,ip[:port]...]")

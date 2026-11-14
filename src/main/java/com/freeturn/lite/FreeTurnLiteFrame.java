@@ -60,6 +60,7 @@ final class FreeTurnLiteFrame extends JFrame {
     private final JCheckBox udpTransport = new JCheckBox("UDP TURN transport");
     private final JTextField kcpFlags = new JTextField();
     private final JCheckBox manualCaptcha = new JCheckBox("Manual captcha");
+    private final JCheckBox advancedCaptcha = new JCheckBox("Advanced captcha");
     private final JCheckBox debug = new JCheckBox("Debug log");
     private final JCheckBox routes = new JCheckBox("Exclude TURN from VPN (-routes, needs admin)");
     private final JComboBox<String> dnsMode = new JComboBox<>(new String[]{"auto", "plain", "doh"});
@@ -224,6 +225,11 @@ final class FreeTurnLiteFrame extends JFrame {
         addLabel(panel, c, row, "Flags");
         JPanel flagRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
         flagRow.add(manualCaptcha);
+        advancedCaptcha.setToolTipText("<html>Автоматическая капча берёт PoW из настоящего браузера:<br>"
+                + "ядро открывает страницу проверки в браузере по умолчанию.<br>"
+                + "Если не вышло, используется обычное авторешение.<br>"
+                + "Не действует вместе с ручной капчей.</html>");
+        flagRow.add(advancedCaptcha);
         flagRow.add(debug);
         flagRow.add(routes);
         addField(panel, c, row++, flagRow);
@@ -297,6 +303,7 @@ final class FreeTurnLiteFrame extends JFrame {
         openCaptcha.addActionListener(e -> openUrl(latestUrl));
         useRawArgs.addActionListener(e -> updateRawMode());
         tcpMode.addActionListener(e -> updateRawMode());
+        manualCaptcha.addActionListener(e -> updateRawMode());
         provider.addActionListener(e -> {
             // 0 оставляет число потоков ядру: для direct это 1.
             if (isDirect()) threads.setValue(0);
@@ -394,6 +401,7 @@ final class FreeTurnLiteFrame extends JFrame {
         udpTransport.setSelected(config.udpTransport);
         kcpFlags.setText(config.kcpFlags);
         manualCaptcha.setSelected(config.manualCaptcha);
+        advancedCaptcha.setSelected(config.advancedCaptcha);
         debug.setSelected(config.debug);
         routes.setSelected(config.routes);
         dnsMode.setSelectedItem(config.dnsMode);
@@ -426,6 +434,7 @@ final class FreeTurnLiteFrame extends JFrame {
         config.udpTransport = udpTransport.isSelected();
         config.kcpFlags = kcpFlags.getText();
         config.manualCaptcha = manualCaptcha.isSelected();
+        config.advancedCaptcha = advancedCaptcha.isSelected();
         config.debug = debug.isSelected();
         config.routes = routes.isSelected();
         config.dnsMode = selected(dnsMode);
@@ -514,6 +523,7 @@ final class FreeTurnLiteFrame extends JFrame {
         kcpFlags.setEnabled(!raw && tcpMode.isSelected());
         udpTransport.setEnabled(vkOptions);
         manualCaptcha.setEnabled(vkOptions);
+        advancedCaptcha.setEnabled(vkOptions && !manualCaptcha.isSelected());
         debug.setEnabled(!raw);
         routes.setEnabled(!raw);
         dnsMode.setEnabled(!raw);

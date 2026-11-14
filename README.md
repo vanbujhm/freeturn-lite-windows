@@ -2,7 +2,8 @@
 
 Small Windows desktop MVP for running the FreeTurn client core.
 
-Requires FreeTurn core v4.1.1 (`hackdiaz-dev/free-turn-proxy`). The server must
+Requires FreeTurn core v4.1.5 (`hackdiaz-dev/free-turn-proxy`) built with the patches
+from `core-patches` (see [Core Binary](#core-binary)). The server must
 run core v4.0.0 or newer: older servers do not acknowledge the Client ID and the
 client stops with `server did not acknowledge client ID`.
 
@@ -17,7 +18,8 @@ Features:
 - exports WireGuard config for external WireGuard/Amnezia clients;
 - rewrites the first `[Peer] Endpoint` to the local FreeTurn listener;
 - stores settings in `%APPDATA%\FreeTurnLite\config.properties`;
-- shows core stdout/stderr logs and captures captcha URLs.
+- shows core stdout/stderr logs and captures captcha URLs;
+- turns on advanced captcha solving (`-advanced-captcha`).
 
 ## Build Without Gradle
 
@@ -44,17 +46,38 @@ its flags and clean shutdown.
 
 ## Core Binary
 
-Put the Windows FreeTurn client binary here before building:
+The app needs the Windows FreeTurn client binary here before building:
 
 ```text
 freeturn-lite-windows\core\free-turn-proxy.exe
 ```
 
-Or download the pinned release binary, verified against `checksums.txt`:
+Build it from the pinned core release with the patches from `core-patches`
+(needs Go and git; Go must be at least the version in the core's `go.mod`,
+1.26.11 for v4.1.5):
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\freeturn-lite-windows\download-core.ps1
+powershell -ExecutionPolicy Bypass -File .\freeturn-lite-windows\build-core.ps1
 ```
+
+The release core has no command-line flag for advanced captcha: the option
+exists only in the core's mobile JSON config. `0001-cli-advanced-captcha.patch`
+adds `-advanced-captcha`. The script clones the core into `core\src`, applies
+the patches and builds with the same flags as the core's release build.
+
+`download-core.ps1` downloads the official release binary, verified against
+`checksums.txt`. That core does not know `-advanced-captcha` and exits at
+start when `Advanced captcha` is on.
+
+## Advanced Captcha
+
+With `Advanced captcha` on, the automatic VK captcha solver takes the
+proof-of-work from a real browser instead of computing it itself. The core
+opens the captcha page in the default browser through its local proxy, waits
+up to 30 seconds for the page to finish the proof-of-work and uses it together
+with the browser's User-Agent and client hints. If the browser gives nothing
+usable, the core falls back to the usual automatic solver. The option does
+nothing with `Manual captcha`, so the window disables it then.
 
 The app also searches for the core in:
 

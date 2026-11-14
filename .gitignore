@@ -5,6 +5,10 @@ build/
 core/*.exe
 core/*.download
 core/checksums.txt
+core/*.build
+
+# Core sources cloned by build-core.ps1.
+core/src/
 
 # IDE/editor files.
 .idea/
