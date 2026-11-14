@@ -2,7 +2,7 @@ plugins {
     application
 }
 
-version = "1.0.0"
+version = "1.1.0"
 
 application {
     mainClass.set("com.freeturn.lite.FreeTurnLiteApp")

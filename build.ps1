@@ -1,6 +1,6 @@
 param(
     [string]$JdkHome = "C:\Program Files\Java\jdk-21",
-    [string]$AppVersion = "1.0.0"
+    [string]$AppVersion = "1.1.0"
 )
 
 $ErrorActionPreference = "Stop"
