@@ -19,7 +19,20 @@ Features:
 - rewrites the first `[Peer] Endpoint` to the local FreeTurn listener;
 - stores settings in `%APPDATA%\FreeTurnLite\config.properties`;
 - shows core stdout/stderr logs and captures captcha URLs;
-- turns on advanced captcha solving (`-advanced-captcha`).
+- turns on advanced captcha solving (`-advanced-captcha`);
+- checks GitHub for a newer FreeTurnLite release.
+
+## Updates
+
+At startup FreeTurnLite asks the GitHub API for the latest release of
+`vanbujhm/freeturn-lite-windows` (drafts and pre-releases are skipped). When it
+is newer than the running version, the log says so and the `Check for updates`
+button turns into `Update to <version>`, which opens the release page. The app
+does not download or install anything by itself.
+
+`Check at startup` turns the automatic check off; the setting is saved at once.
+`Check for updates` always checks on demand and reports the result. The request
+carries only the `FreeTurnLite/<version>` User-Agent.
 
 ## Build Without Gradle
 

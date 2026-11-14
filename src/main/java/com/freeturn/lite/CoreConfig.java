@@ -44,6 +44,7 @@ final class CoreConfig {
     String wireGuardConfig = "";
     String wireGuardName = "freeturn-wg";
     int wireGuardMtu = 1280;
+    boolean checkUpdates = true;
 
     static CoreConfig load() {
         return load(CONFIG_FILE);
@@ -89,6 +90,7 @@ final class CoreConfig {
         config.wireGuardConfig = p.getProperty("wireGuardConfig", config.wireGuardConfig);
         config.wireGuardName = p.getProperty("wireGuardName", config.wireGuardName);
         config.wireGuardMtu = intProperty(p, "wireGuardMtu", config.wireGuardMtu);
+        config.checkUpdates = boolProperty(p, "checkUpdates", config.checkUpdates);
         return config;
     }
 
@@ -127,6 +129,7 @@ final class CoreConfig {
         p.setProperty("wireGuardConfig", wireGuardConfig);
         p.setProperty("wireGuardName", wireGuardName);
         p.setProperty("wireGuardMtu", Integer.toString(wireGuardMtu));
+        p.setProperty("checkUpdates", Boolean.toString(checkUpdates));
         try (OutputStream output = Files.newOutputStream(file)) {
             p.store(output, "FreeTurnLite for Windows");
         }

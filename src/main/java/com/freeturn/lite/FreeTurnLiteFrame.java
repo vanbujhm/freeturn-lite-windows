@@ -32,11 +32,13 @@ import java.awt.Toolkit;
 import java.awt.datatransfer.StringSelection;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.security.SecureRandom;
 import java.util.HexFormat;
+import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -81,10 +83,14 @@ final class FreeTurnLiteFrame extends JFrame {
     private final JButton stop = new JButton("Stop");
     private final JButton save = new JButton("Save");
     private final JButton openCaptcha = new JButton("Open captcha");
+    private final JCheckBox checkUpdatesAtStartup = new JCheckBox("Check at startup");
+    private final JButton checkUpdates = new JButton("Check for updates");
     private String latestUrl = "";
+    private UpdateChecker.Release availableUpdate;
+    private boolean checkingUpdates;
 
     FreeTurnLiteFrame(String initialUri) {
-        super("FreeTurnLite for Windows 1.1.0");
+        super("FreeTurnLite for Windows " + AppInfo.VERSION);
         setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
         setMinimumSize(new Dimension(1040, 760));
         setLocationByPlatform(true);
@@ -102,6 +108,7 @@ final class FreeTurnLiteFrame extends JFrame {
         refreshRunningState();
         pack();
         fitToScreen();
+        if (checkUpdatesAtStartup.isSelected()) checkForUpdates(false);
     }
 
     private void fitToScreen() {
@@ -115,6 +122,11 @@ final class FreeTurnLiteFrame extends JFrame {
         status.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 12));
         panel.add(status, BorderLayout.WEST);
         panel.add(new JLabel("FreeTurn запускает локальный endpoint, WireGuard/Amnezia поднимается отдельно."), BorderLayout.CENTER);
+        JPanel updates = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+        checkUpdatesAtStartup.setToolTipText("Проверять новую версию на GitHub при запуске");
+        updates.add(checkUpdatesAtStartup);
+        updates.add(checkUpdates);
+        panel.add(updates, BorderLayout.EAST);
         return panel;
     }
 
@@ -301,6 +313,14 @@ final class FreeTurnLiteFrame extends JFrame {
             refreshRunningState();
         });
         openCaptcha.addActionListener(e -> openUrl(latestUrl));
+        checkUpdates.addActionListener(e -> {
+            if (availableUpdate != null) {
+                offerUpdate(availableUpdate);
+            } else {
+                checkForUpdates(true);
+            }
+        });
+        checkUpdatesAtStartup.addActionListener(e -> saveCheckUpdatesSetting());
         useRawArgs.addActionListener(e -> updateRawMode());
         tcpMode.addActionListener(e -> updateRawMode());
         manualCaptcha.addActionListener(e -> updateRawMode());
@@ -387,6 +407,7 @@ final class FreeTurnLiteFrame extends JFrame {
     }
 
     private void applyConfig(CoreConfig config) {
+        checkUpdatesAtStartup.setSelected(config.checkUpdates);
         corePath.setText(config.corePath);
         peer.setText(config.peer);
         subUrl.setText(config.subUrl);
@@ -448,6 +469,7 @@ final class FreeTurnLiteFrame extends JFrame {
         config.wireGuardConfig = wireGuardConfig.getText();
         config.wireGuardName = wireGuardName.getText().trim().isEmpty() ? "freeturn-wg" : wireGuardName.getText().trim();
         config.wireGuardMtu = (Integer) wireGuardMtu.getValue();
+        config.checkUpdates = checkUpdatesAtStartup.isSelected();
         return config;
     }
 
@@ -611,6 +633,75 @@ final class FreeTurnLiteFrame extends JFrame {
             Desktop.getDesktop().browse(URI.create(url));
         } catch (Exception e) {
             showError("Не удалось открыть URL: " + e.getMessage());
+        }
+    }
+
+    private void checkForUpdates(boolean manual) {
+        if (checkingUpdates) return;
+        checkingUpdates = true;
+        checkUpdates.setEnabled(false);
+        Thread worker = new Thread(() -> {
+            Optional<UpdateChecker.Release> release = Optional.empty();
+            Exception error = null;
+            try {
+                release = UpdateChecker.newerRelease(UpdateChecker.LATEST_RELEASE, AppInfo.VERSION);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                error = e;
+            } catch (Exception e) {
+                error = e;
+            }
+            Optional<UpdateChecker.Release> found = release;
+            Exception failure = error;
+            SwingUtilities.invokeLater(() -> showUpdateResult(found, failure, manual));
+        }, "freeturn-update-check");
+        worker.setDaemon(true);
+        worker.start();
+    }
+
+    private void showUpdateResult(Optional<UpdateChecker.Release> release, Exception error, boolean manual) {
+        checkingUpdates = false;
+        checkUpdates.setEnabled(true);
+        if (error != null) {
+            String reason = error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage();
+            appendLog("Не удалось проверить обновления: " + reason);
+            if (manual) showError("Не удалось проверить обновления: " + reason);
+            return;
+        }
+        if (release.isEmpty()) {
+            if (manual) {
+                JOptionPane.showMessageDialog(this, "У вас последняя версия FreeTurnLite " + AppInfo.VERSION + ".",
+                        "FreeTurnLite", JOptionPane.INFORMATION_MESSAGE);
+            }
+            return;
+        }
+        availableUpdate = release.get();
+        checkUpdates.setText("Update to " + availableUpdate.version());
+        checkUpdates.setToolTipText(availableUpdate.pageUrl());
+        appendLog("Доступна новая версия FreeTurnLite " + availableUpdate.version() + ": " + availableUpdate.pageUrl());
+        if (manual) offerUpdate(availableUpdate);
+    }
+
+    private void offerUpdate(UpdateChecker.Release release) {
+        int choice = JOptionPane.showConfirmDialog(
+                this,
+                "Доступна FreeTurnLite " + release.version() + ", у вас " + AppInfo.VERSION + ".\n"
+                        + "Открыть страницу релиза, чтобы скачать архив?",
+                "FreeTurnLite",
+                JOptionPane.YES_NO_OPTION,
+                JOptionPane.INFORMATION_MESSAGE
+        );
+        if (choice == JOptionPane.YES_OPTION) openUrl(release.pageUrl());
+    }
+
+    // Сохраняет только этот флаг: несохранённые правки остальных полей не должны попасть в файл.
+    private void saveCheckUpdatesSetting() {
+        try {
+            CoreConfig stored = CoreConfig.load();
+            stored.checkUpdates = checkUpdatesAtStartup.isSelected();
+            stored.save();
+        } catch (IOException e) {
+            showError("Не удалось сохранить настройки: " + e.getMessage());
         }
     }
 

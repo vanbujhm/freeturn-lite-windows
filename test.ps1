@@ -30,4 +30,10 @@ if (Test-Path $CoreExe) {
 }
 
 & $Javaw "-Dfile.encoding=UTF-8" -cp $ClassesDir com.freeturn.lite.CoreConfigTest @TestArgs | Out-Host
-exit $LASTEXITCODE
+$CoreExit = $LASTEXITCODE
+
+& $Javaw "-Dfile.encoding=UTF-8" -cp $ClassesDir com.freeturn.lite.UpdateCheckerTest | Out-Host
+$UpdateExit = $LASTEXITCODE
+
+if ($CoreExit -ne 0) { exit $CoreExit }
+exit $UpdateExit

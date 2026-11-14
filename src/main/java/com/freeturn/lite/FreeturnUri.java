@@ -2,7 +2,6 @@ package com.freeturn.lite;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -61,42 +60,12 @@ final class FreeturnUri {
         require(!payload.isBlank(), "empty payload");
         while (payload.length() % 4 != 0) payload += "=";
         String json = new String(Base64.getUrlDecoder().decode(payload), StandardCharsets.UTF_8);
-        return parseFlatJsonObject(json);
-    }
-
-    private static Map<String, String> parseFlatJsonObject(String json) {
-        JsonCursor cursor = new JsonCursor(json);
-        Map<String, String> result = new LinkedHashMap<>();
-        cursor.skipWhitespace();
-        cursor.expect('{');
-        cursor.skipWhitespace();
-        if (cursor.peek('}')) {
-            cursor.expect('}');
-            return result;
-        }
-        while (true) {
-            cursor.skipWhitespace();
-            String key = cursor.readString();
-            cursor.skipWhitespace();
-            cursor.expect(':');
-            cursor.skipWhitespace();
-            result.put(key, cursor.readValueAsString());
-            cursor.skipWhitespace();
-            if (cursor.peek(',')) {
-                cursor.expect(',');
-                continue;
-            }
-            cursor.expect('}');
-            break;
-        }
-        cursor.skipWhitespace();
-        require(cursor.isAtEnd(), "unexpected trailing data");
-        return result;
+        return JsonCursor.parseObject(json);
     }
 
     private static String kcpFlags(String rawKcp) {
         if (rawKcp == null || rawKcp.isBlank()) return "";
-        Map<String, String> kcp = parseFlatJsonObject(rawKcp);
+        Map<String, String> kcp = JsonCursor.parseObject(rawKcp);
         StringBuilder flags = new StringBuilder();
         for (String key : KCP_NUMBER_KEYS) {
             if (kcp.containsKey(key)) flags.append("-kcp-").append(key).append(' ').append(kcp.get(key)).append(' ');
@@ -126,92 +95,5 @@ final class FreeturnUri {
 
     private static void require(boolean condition, String message) {
         if (!condition) throw new IllegalArgumentException(message);
-    }
-
-    private static final class JsonCursor {
-        private final String source;
-        private int index;
-
-        JsonCursor(String source) {
-            this.source = source;
-        }
-
-        boolean isAtEnd() {
-            return index >= source.length();
-        }
-
-        void skipWhitespace() {
-            while (!isAtEnd() && Character.isWhitespace(source.charAt(index))) index++;
-        }
-
-        boolean peek(char expected) {
-            return !isAtEnd() && source.charAt(index) == expected;
-        }
-
-        void expect(char expected) {
-            require(peek(expected), "expected '" + expected + "'");
-            index++;
-        }
-
-        String readValueAsString() {
-            if (peek('"')) return readString();
-            if (peek('{')) return readObject();
-            int start = index;
-            while (!isAtEnd()) {
-                char ch = source.charAt(index);
-                if (ch == ',' || ch == '}' || Character.isWhitespace(ch)) break;
-                index++;
-            }
-            require(index > start, "expected value");
-            return source.substring(start, index);
-        }
-
-        private String readObject() {
-            int start = index;
-            int depth = 0;
-            while (!isAtEnd()) {
-                if (peek('"')) {
-                    readString();
-                    continue;
-                }
-                char ch = source.charAt(index++);
-                if (ch == '{') depth++;
-                if (ch == '}' && --depth == 0) return source.substring(start, index);
-            }
-            throw new IllegalArgumentException("unterminated object");
-        }
-
-        String readString() {
-            expect('"');
-            StringBuilder builder = new StringBuilder();
-            while (!isAtEnd()) {
-                char ch = source.charAt(index++);
-                if (ch == '"') return builder.toString();
-                if (ch != '\\') {
-                    builder.append(ch);
-                    continue;
-                }
-                require(!isAtEnd(), "bad escape");
-                char escaped = source.charAt(index++);
-                switch (escaped) {
-                    case '"' -> builder.append('"');
-                    case '\\' -> builder.append('\\');
-                    case '/' -> builder.append('/');
-                    case 'b' -> builder.append('\b');
-                    case 'f' -> builder.append('\f');
-                    case 'n' -> builder.append('\n');
-                    case 'r' -> builder.append('\r');
-                    case 't' -> builder.append('\t');
-                    case 'u' -> {
-                        require(index + 4 <= source.length(), "bad unicode escape");
-                        String hex = source.substring(index, index + 4);
-                        builder.append((char) Integer.parseInt(hex, 16));
-                        index += 4;
-                    }
-                    default -> throw new IllegalArgumentException("bad escape");
-                }
-            }
-            throw new IllegalArgumentException("unterminated string");
-        }
     }
 }
