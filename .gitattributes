@@ -1,2 +1,0 @@
-# git apply needs the patches byte for byte as they were made: keep LF on checkout.
-core-patches/*.patch text eol=lf

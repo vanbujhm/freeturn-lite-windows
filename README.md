@@ -2,8 +2,8 @@
 
 Small Windows desktop MVP for running the FreeTurn client core.
 
-Requires FreeTurn core v4.1.5 (`hackdiaz-dev/free-turn-proxy`) built with the patches
-from `core-patches` (see [Core Binary](#core-binary)). The server must
+Requires FreeTurn core v4.2.1 (`hackdiaz-dev/free-turn-proxy`); `Advanced captcha`
+needs core v4.2.0 or newer. The server must
 run core v4.0.0 or newer: older servers do not acknowledge the Client ID and the
 client stops with `server did not acknowledge client ID`.
 
@@ -59,28 +59,23 @@ its flags and clean shutdown.
 
 ## Core Binary
 
-The app needs the Windows FreeTurn client binary here before building:
+Put the Windows FreeTurn client binary here before building:
 
 ```text
 freeturn-lite-windows\core\free-turn-proxy.exe
 ```
 
-Build it from the pinned core release with the patches from `core-patches`
-(needs Go and git; Go must be at least the version in the core's `go.mod`,
-1.26.11 for v4.1.5):
+Or download the pinned release binary, verified against `checksums.txt`:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\freeturn-lite-windows\build-core.ps1
+powershell -ExecutionPolicy Bypass -File .\freeturn-lite-windows\download-core.ps1
 ```
 
-The release core has no command-line flag for advanced captcha: the option
-exists only in the core's mobile JSON config. `0001-cli-advanced-captcha.patch`
-adds `-advanced-captcha`. The script clones the core into `core\src`, applies
-the patches and builds with the same flags as the core's release build.
+The app also searches for the core in:
 
-`download-core.ps1` downloads the official release binary, verified against
-`checksums.txt`. That core does not know `-advanced-captcha` and exits at
-start when `Advanced captcha` is on.
+- `FreeTurnLite\core\free-turn-proxy.exe`
+- `FreeTurnLite\free-turn-proxy.exe`
+- `FreeTurnLite\app\free-turn-proxy.exe`
 
 ## Advanced Captcha
 
@@ -90,13 +85,8 @@ opens the captcha page in the default browser through its local proxy, waits
 up to 30 seconds for the page to finish the proof-of-work and uses it together
 with the browser's User-Agent and client hints. If the browser gives nothing
 usable, the core falls back to the usual automatic solver. The option does
-nothing with `Manual captcha`, so the window disables it then.
-
-The app also searches for the core in:
-
-- `FreeTurnLite\core\free-turn-proxy.exe`
-- `FreeTurnLite\free-turn-proxy.exe`
-- `FreeTurnLite\app\free-turn-proxy.exe`
+nothing with `Manual captcha`, so the window disables it then. Cores older
+than v4.2.0 do not know `-advanced-captcha` and exit at start when it is on.
 
 ## WireGuard / Amnezia
 
